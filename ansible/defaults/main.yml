@@ -1,0 +1,4 @@
+artifact_group: lv.jug.windows
+artifact_name: app
+app_version: 0.1.0-SNAPSHOT
+extra_args:

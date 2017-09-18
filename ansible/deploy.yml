@@ -1,0 +1,63 @@
+- hosts: windows
+  vars:
+    app_name: app
+    app_path: "C:\\Install\\App"
+    app_version: "0.0.1-SNAPSHOT"
+    app_uri: "http://localhost:8080/health"
+    jar_path: "{{app_path}}\\{{app_name}}.jar"
+    java_path: "C:\\java8\\bin\\javaw.exe"
+    java_opts: "-DLOG_PATH={{logs_path}} -Xms256m -Xmx512m"
+    logs_path: "{{app_path}}\\logs"
+  gather_facts: false
+  tasks:
+    - name: Create directory structure
+      win_file:
+        path: "{{logs_path}}"
+        state: directory
+    - name: Install NSSM
+      win_chocolatey:
+        name: nssm
+        state: present
+    - name: Install Java
+      win_chocolatey:
+        name: jdk8
+        state: present
+        params: "installdir=c:\\java8"
+    - name: Upload application jar
+      win_copy:
+        src: "../build/libs/{{app_name}}-{{app_version}}.jar"
+        dest: "{{app_path}}\\updated.jar"
+        force: yes
+    - name: Remove Windows application service
+      win_service:
+        name: "{{app_name}}"
+        state: absent
+      ignore_errors: yes
+    - name: Register Windows service using NSSM
+      win_nssm:
+        name: "{{app_name}}"
+        application: "{{java_path}}"
+        start_mode: manual
+        state: stopped
+        stdout_file: "{{logs_path}}\\stdout.log"
+        stderr_file: "{{logs_path}}\\stderr.log"
+        app_parameters_free_form: "{{java_opts}} -jar {{jar_path}} {{extra_args}}"
+    - name: Set the Application path for the app to the base folder
+      raw: "nssm set {{app_name}} AppDirectory {{app_path}}"
+    - name: Set the Application Spring profile to DEV
+      raw: "nssm set {{app_name}} AppEnvironmentExtra SPRING_PROFILES_ACTIVE=dev"
+    - name: Replace original application with updated one
+      raw: "Copy-Item {{app_path}}\\updated.jar {{jar_path}}"
+    - name: Start Windows application service
+      win_service:
+        name: "{{app_name}}"
+        state: started
+        become: true
+    - name: Check that application is ready
+      win_uri:
+        url: "{{app_uri}}"
+        method: GET
+      register: result
+      until: (result.status_code is defined) and (result.status_code == 200)
+      retries: 20
+      delay: 5

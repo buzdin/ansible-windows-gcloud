@@ -1,0 +1,5 @@
+[all:vars]
+extra_args = reset-db
+
+[windows]
+35.197.231.147
